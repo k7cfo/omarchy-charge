@@ -1,0 +1,184 @@
+#!/usr/bin/env bash
+# Charge Limit backend. Reads and writes kernel charge thresholds.
+# Does not touch power-profiles-daemon.
+set -euo pipefail
+
+STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy/smart-charge"
+HELPER=/usr/local/sbin/set-battery-charge-thresholds
+CONSERVE_END=${CHARGE_CONSERVE_END:-80}
+
+is_pct() { [[ ${1:-} =~ ^[0-9]+$ ]] && ((10#$1 >= 0 && 10#$1 <= 100)); }
+
+if ! is_pct "$CONSERVE_END"; then
+  CONSERVE_END=80
+fi
+if ((10#$CONSERVE_END < 50)); then CONSERVE_END=50; fi
+if ((10#$CONSERVE_END > 95)); then CONSERVE_END=95; fi
+
+CONSERVE_START=$((10#$CONSERVE_END - 5))
+if ((CONSERVE_START < 0)); then CONSERVE_START=0; fi
+FULL_START=$CONSERVE_START
+FULL_END=100
+
+mkdir -p "$STATE_DIR"
+
+read_file() {
+  local path=$1
+  [[ -r $path ]] || { echo ""; return 0; }
+  tr -d '\n' <"$path"
+}
+
+find_battery() {
+  local d
+  for d in /sys/class/power_supply/*; do
+    [[ -e $d/charge_control_end_threshold ]] || continue
+    echo "$d"
+    return 0
+  done
+  echo ""
+}
+
+is_ac() {
+  local d
+  for d in /sys/class/power_supply/*; do
+    [[ -r $d/type ]] || continue
+    [[ $(read_file "$d/type") == Mains ]] || continue
+    [[ $(read_file "$d/online") == 1 ]] && return 0
+  done
+  return 1
+}
+
+battery_path() {
+  read_file "$STATE_DIR/battery_path"
+}
+
+current_mode() {
+  read_file "$STATE_DIR/mode"
+}
+
+set_mode() {
+  printf '%s\n' "$1" >"$STATE_DIR/mode"
+}
+
+json_escape() {
+  local s=$1
+  s=${s//\\/\\\\}
+  s=${s//\"/\\\"}
+  printf '%s' "$s"
+}
+
+write_thresholds() {
+  local start=$1 end=$2 bat=$3
+  if [[ -x $HELPER ]]; then
+    if sudo -n "$HELPER" "$start" "$end" 2>/dev/null; then
+      return 0
+    fi
+  fi
+  if [[ -n $bat && -w $bat/charge_control_start_threshold && -w $bat/charge_control_end_threshold ]]; then
+    if ((10#$end >= 10#$(read_file "$bat/charge_control_end_threshold"))); then
+      printf '%s\n' "$end" >"$bat/charge_control_end_threshold"
+      printf '%s\n' "$start" >"$bat/charge_control_start_threshold"
+    else
+      printf '%s\n' "$start" >"$bat/charge_control_start_threshold"
+      printf '%s\n' "$end" >"$bat/charge_control_end_threshold"
+    fi
+    return 0
+  fi
+  echo "Charge thresholds are not writable. Run scripts/install-helper once with sudo." >&2
+  return 1
+}
+
+cmd_status() {
+  local bat start end cap mode supported writable ac json=0
+  [[ ${1:-} == --json ]] && json=1
+  bat=$(find_battery)
+  if [[ -z $bat ]]; then
+    if ((json)); then
+      printf '{"supported":false,"writable":false,"ac":false,"capacity":0,"start":0,"end":0,"mode":"unknown","battery":"","error":"unsupported"}\n'
+    else
+      echo "Charge thresholds are not supported on this machine."
+    fi
+    return 0
+  fi
+  printf '%s\n' "$bat" >"$STATE_DIR/battery_path"
+  start=$(read_file "$bat/charge_control_start_threshold")
+  end=$(read_file "$bat/charge_control_end_threshold")
+  cap=$(read_file "$bat/capacity")
+  mode=$(current_mode)
+  if [[ $mode != full && $mode != conserve ]]; then
+    if [[ $end == 100 || $end == 99 ]]; then
+      mode=full
+    else
+      mode=conserve
+    fi
+  fi
+  writable=false
+  if [[ -w $bat/charge_control_end_threshold ]]; then
+    writable=true
+  elif [[ -x $HELPER ]]; then
+    writable=true
+  fi
+  ac=false
+  is_ac && ac=true
+  supported=true
+  if ((json)); then
+    printf '{"supported":true,"writable":%s,"ac":%s,"capacity":%s,"start":%s,"end":%s,"mode":"%s","battery":"%s","error":""}\n' \
+      "$writable" "$ac" "${cap:-0}" "${start:-0}" "${end:-0}" "$(json_escape "$mode")" "$(json_escape "$(basename "$bat")")"
+  else
+    echo "Supported:     yes"
+    echo "Writable:      $writable"
+    echo "AC:            $([[ $ac == true ]] && echo online || echo offline)"
+    echo "Capacity:      ${cap}%"
+    echo "Thresholds:    ${start}–${end}%"
+    echo "Mode:          $mode"
+    echo "Battery:       $(basename "$bat")"
+  fi
+}
+
+apply_conserve() {
+  local bat
+  bat=$(find_battery)
+  [[ -n $bat ]] || { echo "No threshold-capable battery." >&2; return 1; }
+  write_thresholds "$CONSERVE_START" "$CONSERVE_END" "$bat"
+  set_mode conserve
+}
+
+apply_full() {
+  local bat
+  bat=$(find_battery)
+  [[ -n $bat ]] || { echo "No threshold-capable battery." >&2; return 1; }
+  write_thresholds "$FULL_START" "$FULL_END" "$bat"
+  set_mode full
+}
+
+cmd=${1:-status}
+case "$cmd" in
+  status)
+    cmd_status "${2:-}"
+    ;;
+  conserve | hold | hold-80)
+    apply_conserve
+    echo "Charge cap set to ${CONSERVE_END}%."
+    ;;
+  full | travel | fill)
+    apply_full
+    echo "Charge cap set to 100%."
+    ;;
+  -h | --help | help)
+    cat <<EOF
+Usage: charge-ctl [status [--json]|conserve|full]
+
+  status       print charge-threshold state
+  conserve     hold at ${CONSERVE_END}% (start ${CONSERVE_START}%)
+  full         allow charge to 100%
+
+Does not change power-profiles-daemon. Needs a battery with
+charge_control_end_threshold and a one-time writable helper.
+EOF
+    ;;
+  *)
+    echo "Unknown command: $cmd" >&2
+    echo "Usage: charge-ctl [status [--json]|conserve|full]" >&2
+    exit 1
+    ;;
+esac
