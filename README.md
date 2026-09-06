@@ -49,7 +49,7 @@ The laptop also needs a battery that exposes `charge_control_end_threshold` in s
 
 ## Use
 
-- **Plug in** — a card asks Hold 80% or Charge to 100%. Enter / timeout / Esc keeps 80%. `2` or `F` fills to 100%.
+- **Plug in** — press **1** to hold 80%, **2** to charge to 100%. Timeout and Esc are 1.
 - **Bar widget** — shows the current cap. Left click toggles. Right click opens the same prompt.
 - **IPC**
 

@@ -116,10 +116,10 @@ Item {
           } else if (event.key === Qt.Key_Right || event.key === Qt.Key_Down || event.key === Qt.Key_Tab) {
             root.selectedIndex = 1
             event.accepted = true
-          } else if (event.key === Qt.Key_1) {
+          } else if (event.key === Qt.Key_1 || event.key === Qt.Key_Keypad1 || event.text === "1") {
             root.chooseConserve()
             event.accepted = true
-          } else if (event.key === Qt.Key_2 || event.key === Qt.Key_F) {
+          } else if (event.key === Qt.Key_2 || event.key === Qt.Key_Keypad2 || event.text === "2") {
             root.chooseFull()
             event.accepted = true
           } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space) {
@@ -152,7 +152,7 @@ Item {
         Text {
           width: parent.width
           text: root.writable
-            ? ("Battery at " + root.capacity + "%. Hold at " + root.conserveEnd + "% to save the pack, or fill to 100% for the day.")
+            ? ("Battery at " + root.capacity + "%. Press 1 to hold at " + root.conserveEnd + "%, or 2 to fill to 100% for the day.")
             : (root.errorText || "Charge thresholds are not writable. Install the helper once — see the Charge Limit README.")
           color: root.foreground
           opacity: 0.78
@@ -161,14 +161,16 @@ Item {
           wrapMode: Text.WordWrap
         }
 
-        Row {
-          id: choiceRow
+        Column {
+          id: choiceCol
           width: parent.width
           spacing: Style.space(8)
 
           Button {
-            width: (parent.width - parent.spacing) / 2
+            width: parent.width
+            iconText: "1"
             text: "Hold " + root.conserveEnd + "%"
+            leftAlign: true
             fontFamily: root.fontFamily
             foreground: root.foreground
             bordered: true
@@ -179,8 +181,10 @@ Item {
           }
 
           Button {
-            width: (parent.width - parent.spacing) / 2
+            width: parent.width
+            iconText: "2"
             text: "Charge to 100%"
+            leftAlign: true
             fontFamily: root.fontFamily
             foreground: root.foreground
             bordered: true
@@ -213,7 +217,7 @@ Item {
 
         Text {
           width: parent.width
-          text: "Enter keeps " + root.conserveEnd + "% · 2 fills to 100% · Esc dismisses"
+          text: "1 keeps " + root.conserveEnd + "% · 2 fills to 100% · Esc is 1"
           color: root.foreground
           opacity: 0.5
           font.family: root.fontFamily
