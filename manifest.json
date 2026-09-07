@@ -2,11 +2,11 @@
   "schemaVersion": 1,
   "id": "k7cfo.charge",
   "name": "Charge Limit",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "author": "k7cfo",
   "license": "MIT",
   "homepage": "https://github.com/k7cfo/omarchy-charge",
-  "description": "When you plug in, keep the 80% battery-life cap or charge to 100% for the day. Does not change power-profiles-daemon.",
+  "description": "When you plug in, choose 80% or 100%, then power-saver, balanced, or performance. Skip the card later from a checkbox; turn it back on from the bar.",
   "kinds": [
     "service",
     "bar-widget"
@@ -18,7 +18,7 @@
   },
   "barWidget": {
     "displayName": "Charge Limit",
-    "description": "Shows the charge cap. Click to hold at 80% or fill to 100%. A prompt also appears when you plug in.",
+    "description": "Shows the charge cap. Click for ask-on-plug. Right-click runs the cap-then-profile wizard.",
     "category": "Hardware",
     "aliases": [
       "charge",
@@ -58,7 +58,7 @@
         "type": "boolean",
         "label": "Ask when plugging in",
         "defaultValue": true,
-        "description": "Show the 80% / 100% choice when AC connects. The bar widget can still change the cap without unplugging."
+        "description": "Show the two-step card when AC connects: charge cap, then power profile. Uncheck to skip. Turn it back on from the bar panel."
       }
     ]
   }

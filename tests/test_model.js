@@ -12,6 +12,9 @@ assert.strictEqual(Model.capLabel("full", 80), "100")
 assert.strictEqual(Model.capLabel("conserve", 80), "80")
 assert.strictEqual(Model.defaultTimeoutMs({ promptTimeoutSec: 20 }), 20000)
 assert.strictEqual(Model.pluginFilePath("file:///home/base/x/"), "/home/base/x")
+assert.strictEqual(Model.promptOnConnectFromSettings({}), true)
+assert.strictEqual(Model.promptOnConnectFromSettings({ promptOnConnect: true }), true)
+assert.strictEqual(Model.promptOnConnectFromSettings({ promptOnConnect: false }), false)
 
 const parsed = Model.parseStatus('{"supported":true,"writable":true,"ac":false,"capacity":78,"start":75,"end":80,"mode":"conserve","battery":"BAT0","error":""}')
 assert.strictEqual(parsed.supported, true)
@@ -60,5 +63,13 @@ const settings = Model.settingsFromConfig({
   plugins: [{ id: "k7cfo.charge" }]
 }, "k7cfo.charge")
 assert.strictEqual(settings.promptTimeoutSec, 15)
+
+const profiles = Model.parseProfiles("power-saver\t0\nbalanced\t1\nperformance\t0\n")
+assert.deepStrictEqual(profiles.profiles, ["power-saver", "balanced", "performance"])
+assert.strictEqual(profiles.active, "balanced")
+assert.strictEqual(Model.profileTitle("power-saver"), "Power saver")
+assert.strictEqual(Model.profileIndex(profiles.profiles, "balanced"), 1)
+assert.strictEqual(Model.profileAt(profiles.profiles, 2), "performance")
+assert.strictEqual(Model.profileAt(profiles.profiles, 9), "")
 
 console.log("ok")

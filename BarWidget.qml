@@ -16,6 +16,9 @@ BarWidget {
   readonly property bool supported: status.supported
   readonly property string mode: status.mode === "full" ? "full" : "conserve"
   readonly property string label: Model.capLabel(mode, conserveEnd) + "%"
+  readonly property bool opened: panelLoader.item ? panelLoader.item.opened === true : false
+  readonly property bool popoutSwitchClosing: panelLoader.item ? panelLoader.item.popoutSwitchClosing === true : false
+
 
   function ctlCommand(args) {
     return ["env", "CHARGE_CONSERVE_END=" + String(root.conserveEnd)].concat(args)
@@ -27,24 +30,41 @@ BarWidget {
     statusProc.running = true
   }
 
-  function apply(next) {
-    if (applyProc.running) return
-    applyProc.command = root.ctlCommand([root.ctl, next === "full" ? "full" : "conserve"])
-    applyProc.running = true
-  }
-
-  function toggleCap() {
-    if (!supported) return
-    apply(mode === "full" ? "conserve" : "full")
-  }
-
   function prompt() {
     Quickshell.execDetached(["omarchy-shell", "k7cfo.charge", "prompt"])
+  }
+
+  function open() {
+    if (panelLoader.item) panelLoader.item.open()
+  }
+
+  function close() {
+    if (panelLoader.item) panelLoader.item.close()
+  }
+
+  function togglePanel() {
+    if (panelLoader.item) panelLoader.item.toggle()
+  }
+
+  function closeForPopoutSwitch() {
+    if (panelLoader.item) panelLoader.item.closeForPopoutSwitch()
+  }
+
+  function injectPanel() {
+    var target = panelLoader.item
+    if (!target) return
+    if ("bar" in target) target.bar = root.bar
+    if ("settings" in target) target.settings = root.settings
+    if ("anchorItem" in target) target.anchorItem = button
+    if ("hostWidget" in target) target.hostWidget = root
   }
 
   visible: supported
   implicitWidth: supported ? button.implicitWidth : 0
   implicitHeight: supported ? button.implicitHeight : 0
+
+  onBarChanged: injectPanel()
+  onSettingsChanged: injectPanel()
 
   Process {
     id: statusProc
@@ -52,12 +72,6 @@ BarWidget {
       waitForEnd: true
       onStreamFinished: root.status = Model.parseStatus(text)
     }
-  }
-
-  Process {
-    id: applyProc
-    stdout: StdioCollector { waitForEnd: true }
-    onExited: root.refresh()
   }
 
   Timer {
@@ -73,6 +87,17 @@ BarWidget {
     function onOnBatteryChanged() { root.refresh() }
   }
 
+  Loader {
+    id: panelLoader
+    active: true
+    source: Qt.resolvedUrl("Panel.qml")
+    visible: false
+    onLoaded: {
+      root.injectPanel()
+      Qt.callLater(root.injectPanel)
+    }
+  }
+
   BarIconButton {
     id: button
     anchors.fill: parent
@@ -80,13 +105,13 @@ BarWidget {
     text: root.label
     tooltipText: root.supported
       ? (root.mode === "full"
-        ? "Charging to 100%. Click to hold at " + root.conserveEnd + "%."
-        : "Holding at " + root.conserveEnd + "%. Click to charge to 100%.")
+        ? "Charging to 100%. Click for ask-on-plug. Right-click for the wizard."
+        : "Holding at " + root.conserveEnd + "%. Click for ask-on-plug. Right-click for the wizard.")
       : "No charge-threshold battery"
     onPressed: function(b) {
       if (!root.supported) return
       if (b === Qt.RightButton) root.prompt()
-      else root.toggleCap()
+      else root.togglePanel()
     }
   }
 }

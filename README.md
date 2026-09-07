@@ -1,10 +1,11 @@
 # Charge Limit
 
-An Omarchy plugin that asks what to do with the pack when you plug in.
+An Omarchy plugin that asks what to do when you plug in.
 
-Default is **hold at 80%**. Choose **charge to 100%** when you know you need the whole day. After a full charge finishes, the cap returns to 80%. Unplugging also returns to 80%.
+First choose the pack: **1** hold at 80%, **2** fill to 100%. Then choose the power profile: **1** power saver, **2** balanced, **3** performance. After a full charge finishes, the cap returns to 80%. Unplugging also returns to 80%.
 
-This does **not** change power-profiles-daemon. Omarchy still applies your AC and battery profiles (`balanced` / `performance` / `power-saver`) the way you already set them. Charge Limit only writes `charge_control_*_threshold`.
+The card can be silenced with **Don't ask when plugging in**. Turn it back on from the bar panel.
+
 
 <p align="center">
   <img width="960" alt="Charge Limit" src="preview.png" />
@@ -49,8 +50,9 @@ The laptop also needs a battery that exposes `charge_control_end_threshold` in s
 
 ## Use
 
-- **Plug in** — press **1** to hold 80%, **2** to charge to 100%. Timeout and Esc are 1.
-- **Bar widget** — shows the current cap. Left click toggles. Right click opens the same prompt.
+- **Plug in** — **1** hold 80%, **2** fill to 100%, then **1 / 2 / 3** for power saver, balanced, or performance. Timeout and Esc on the first step are 80%. Esc on the second step keeps the current profile.
+- **Don't ask when plugging in** — checkbox on the card, or press **D**. The next plug stays quiet.
+- **Bar widget** — left click opens the panel with **Ask when plugging in** (the way back). Right click runs the wizard now.
 - **IPC**
 
 ```bash
@@ -65,9 +67,10 @@ Move the widget with `omarchy bar move k7cfo.charge`.
 
 ## Power profiles
 
-Leave them alone. Charge Limit does not call `powerprofilesctl` or `omarchy-powerprofiles-set`. If you already customized AC vs battery profiles in the Power panel, they keep working.
+Step two calls `omarchy-powerprofiles-set`, the same path as the Power panel, so the choice is remembered for AC vs battery. Omarchy's battery service still restores the last AC profile when you plug in; the wizard is how you change it for this session (and the next).
 
 If you also run a timer that used to auto-fill to 100% after two hours on AC, turn that auto-full off. An explicit “hold at 80%” from the prompt should stick for that plug session. `thinkpad-smart-charge travel` / `conserve` still work and write the same state files.
+
 
 ## Update
 
@@ -93,10 +96,12 @@ State lives in `~/.local/state/omarchy/smart-charge/` and can be deleted.
 
 ## Security and data
 
-Plugins run unsandboxed inside `omarchy-shell`. Charge Limit does not use the network, does not ship binaries, and does not change power profiles. It writes:
+Plugins run unsandboxed inside `omarchy-shell`. Charge Limit does not use the network and does not ship binaries. It writes:
 
 - `/sys/class/power_supply/*/charge_control_*_threshold` through the helper
-- `~/.local/state/omarchy/smart-charge/` — mode for this plug session
+- `~/.local/state/omarchy/smart-charge/` — charge mode for this plug session
+- `~/.local/state/omarchy/powerprofiles/` — AC/battery profile, via `omarchy-powerprofiles-set`
+- `~/.config/omarchy/shell.json` — `promptOnConnect` when you skip or restore the card
 
 `omarchy plugin add` never runs `install-helper`. You run that once, on purpose.
 
@@ -105,15 +110,17 @@ Plugins run unsandboxed inside `omarchy-shell`. Charge Limit does not use the ne
 - [Omarchy](https://omarchy.org/) with `omarchy plugin add`
 - A battery with `charge_control_end_threshold`
 - One-time writable helper (see above)
+- `power-profiles-daemon` / `omarchy-powerprofiles-set` for step two
 
 ## Layout
 
 ```text
 manifest.json                         Omarchy plugin manifest (repo root)
-Service.qml                           Watches AC, shows the prompt
-Prompt.qml                            Hold 80% / Charge to 100% card
+Service.qml                           Watches AC, shows the prompt, sets profiles
+Prompt.qml                            Cap, then profile, then skip-next-time
+Panel.qml                             Bar panel: ask-on-plug toggle
 BarWidget.qml                         Cap readout on the bar
-Model.js                              Prompt rules and status parsing
+Model.js                              Prompt rules, status, profile parsing
 scripts/charge-ctl                    Read/write thresholds
 scripts/set-battery-charge-thresholds Root helper source
 scripts/install-helper                Optional one-time sudo install

@@ -34,6 +34,12 @@ function capLabel(mode, conserveEnd) {
   return mode === "full" ? "100" : String(conserveEndFromSettings({ conserveEnd: conserveEnd }))
 }
 
+function promptOnConnectFromSettings(settings) {
+  if (!settings || settings.promptOnConnect === undefined || settings.promptOnConnect === null)
+    return true
+  return settings.promptOnConnect !== false && settings.promptOnConnect !== "false"
+}
+
 function parseStatus(raw) {
   var empty = {
     supported: false,
@@ -113,6 +119,49 @@ function settingsFromConfig(config, pluginId) {
   return found
 }
 
+function parseProfiles(raw) {
+  var lines = String(raw || "").split("\n")
+  var list = []
+  var active = ""
+  for (var i = 0; i < lines.length; i++) {
+    var line = String(lines[i] || "").trim()
+    if (!line) continue
+    var parts = line.split("\t")
+    var name = String(parts[0] || "").trim()
+    if (!name) continue
+    list.push(name)
+    if (String(parts[1] || "").trim() === "1") active = name
+  }
+  return { profiles: list, active: active }
+}
+
+function profileTitle(name) {
+  if (name === "power-saver") return "Power saver"
+  if (name === "balanced") return "Balanced"
+  if (name === "performance") return "Performance"
+  return String(name || "")
+}
+
+function profileIcon(name) {
+  if (name === "power-saver") return "󰌪"
+  if (name === "balanced") return "󰊚"
+  if (name === "performance") return "󰓅"
+  return "󰂄"
+}
+
+function profileIndex(profiles, active) {
+  var list = Array.isArray(profiles) ? profiles : []
+  var idx = list.indexOf(active)
+  if (idx >= 0) return idx
+  return 0
+}
+
+function profileAt(profiles, index) {
+  var list = Array.isArray(profiles) ? profiles : []
+  if (index < 0 || index >= list.length) return ""
+  return list[index]
+}
+
 if (typeof module !== "undefined") {
   module.exports = {
     clampPercent: clampPercent,
@@ -122,10 +171,16 @@ if (typeof module !== "undefined") {
     fullStart: fullStart,
     modeFromEnd: modeFromEnd,
     capLabel: capLabel,
+    promptOnConnectFromSettings: promptOnConnectFromSettings,
     parseStatus: parseStatus,
     shouldPrompt: shouldPrompt,
     defaultTimeoutMs: defaultTimeoutMs,
     pluginFilePath: pluginFilePath,
-    settingsFromConfig: settingsFromConfig
+    settingsFromConfig: settingsFromConfig,
+    parseProfiles: parseProfiles,
+    profileTitle: profileTitle,
+    profileIcon: profileIcon,
+    profileIndex: profileIndex,
+    profileAt: profileAt
   }
 }
