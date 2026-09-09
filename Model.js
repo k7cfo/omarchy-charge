@@ -65,6 +65,20 @@ function capLabel(mode, conserveEnd) {
   return mode === "full" ? "100" : String(conserveEndFromSettings({ conserveEnd: conserveEnd }))
 }
 
+function packPercent(upowerPercent, capacity) {
+  var p = Number(upowerPercent)
+  if (isFinite(p)) {
+    if (p >= 0 && p <= 1) return clampPercent(p * 100)
+    return clampPercent(p)
+  }
+  return clampPercent(capacity)
+}
+
+function barLabel(capacity, mode, conserveEnd) {
+  return String(clampPercent(capacity)) + "·" + capLabel(mode, conserveEnd)
+}
+
+
 function promptOnConnectFromSettings(settings) {
   if (!settings || settings.promptOnConnect === undefined || settings.promptOnConnect === null)
     return true
@@ -215,6 +229,8 @@ if (typeof module !== "undefined") {
     fullStart: fullStart,
     modeFromEnd: modeFromEnd,
     capLabel: capLabel,
+    packPercent: packPercent,
+    barLabel: barLabel,
     promptOnConnectFromSettings: promptOnConnectFromSettings,
     parseStatus: parseStatus,
     shouldPrompt: shouldPrompt,

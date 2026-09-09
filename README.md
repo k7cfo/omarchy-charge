@@ -52,7 +52,7 @@ The laptop also needs a battery that exposes `charge_control_end_threshold` in s
 
 - **Plug in** — **1** hold 80%, **2** fill to 100%, then **1 / 2 / 3** for power saver, balanced, or performance. Timeout and Esc on the first step are 80%. Esc on the second step keeps the current profile.
 - **Don't ask when plugging in** — checkbox on the card, or press **D**. The next plug stays quiet.
-- **Bar widget** — left click opens the panel with **Ask when plugging in** (the way back). Right click runs the wizard now.
+- **Bar widget** — `41·80` is pack percent, then the cap. Left click opens the panel with **Ask when plugging in**. Right click runs the wizard now.
 - **IPC**
 
 ```bash

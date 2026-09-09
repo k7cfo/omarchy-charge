@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "k7cfo.charge",
   "name": "Charge Limit",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "author": "k7cfo",
   "license": "MIT",
   "homepage": "https://github.com/k7cfo/omarchy-charge",
@@ -18,7 +18,7 @@
   },
   "barWidget": {
     "displayName": "Charge Limit",
-    "description": "Shows the charge cap. Click for ask-on-plug. Right-click runs the cap-then-profile wizard.",
+    "description": "Shows pack percent and the charge cap. Click for ask-on-plug. Right-click runs the cap-then-profile wizard.",
     "category": "Hardware",
     "aliases": [
       "charge",
