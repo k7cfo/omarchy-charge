@@ -191,6 +191,7 @@ Item {
 
         Text {
           width: parent.width
+          textFormat: Text.PlainText
           text: root.onCharge ? "Plugged in" : "Power profile"
           color: root.foreground
           font.family: root.fontFamily
@@ -200,10 +201,11 @@ Item {
 
         Text {
           width: parent.width
+          textFormat: Text.PlainText
           text: root.onCharge
             ? (root.writable
               ? ("Battery at " + root.capacity + "%. Press 1 to hold at " + root.conserveEnd + "%, or 2 to fill to 100% for the day.")
-              : (root.errorText || "Charge thresholds are not writable. Install the helper once — see the Charge Limit README."))
+              : (Model.plain(root.errorText) || "Charge thresholds are not writable. Install the helper once — see the Charge Limit README."))
             : "Then pick how hard the machine should run on AC."
           color: root.foreground
           opacity: 0.78
@@ -296,6 +298,7 @@ Item {
           spacing: Style.space(10)
 
           Text {
+            textFormat: Text.PlainText
             text: "Don't ask when plugging in"
             color: root.foreground
             font.family: root.fontFamily
@@ -316,6 +319,7 @@ Item {
 
         Text {
           width: parent.width
+          textFormat: Text.PlainText
           text: root.onCharge
             ? ("1 keeps " + root.conserveEnd + "% · 2 fills to 100% · D skips next time · Esc is 1")
             : "1–3 picks a profile · Esc keeps the current one · D skips next time"

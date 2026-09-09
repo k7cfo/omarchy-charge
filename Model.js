@@ -13,6 +13,37 @@ function clampInt(n, min, max, fallback) {
   return n
 }
 
+var MAX_HELPER_CHARS = 4096
+var MAX_LABEL_CHARS = 80
+var MAX_NAME_CHARS = 32
+var MAX_PROFILES = 8
+
+function plain(value, max) {
+  var limit = max === undefined ? MAX_LABEL_CHARS : max
+  var s = String(value === undefined || value === null ? "" : value)
+  s = s.replace(/[\u0000-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2066-\u2069]/g, "")
+  s = s.replace(/[<>&]/g, "")
+  if (s.length > limit) s = s.substring(0, limit)
+  return s
+}
+
+function sanitizeName(value) {
+  var s = plain(value, MAX_NAME_CHARS)
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,31}$/.test(s)) return ""
+  if (s === "." || s === "..") return ""
+  return s
+}
+
+function sanitizeProfileName(value) {
+  var s = plain(value, MAX_NAME_CHARS)
+  if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(s)) return ""
+  return s
+}
+
+function isProfileName(name) {
+  return name !== "" && sanitizeProfileName(name) === name
+}
+
 function conserveEndFromSettings(settings) {
   return clampInt(settings && settings.conserveEnd, 50, 95, 80)
 }
@@ -52,7 +83,12 @@ function parseStatus(raw) {
     battery: "",
     error: ""
   }
-  var text = String(raw || "").trim()
+  var text = String(raw || "")
+  if (text.length > MAX_HELPER_CHARS) {
+    empty.error = "invalid-json"
+    return empty
+  }
+  text = text.trim()
   if (!text) return empty
   try {
     var data = JSON.parse(text)
@@ -64,8 +100,8 @@ function parseStatus(raw) {
       start: clampPercent(data.start),
       end: clampPercent(data.end),
       mode: data.mode === "full" ? "full" : (data.mode === "conserve" ? "conserve" : "unknown"),
-      battery: String(data.battery || ""),
-      error: String(data.error || "")
+      battery: sanitizeName(data.battery),
+      error: plain(data.error, MAX_LABEL_CHARS)
     }
   } catch (e) {
     empty.error = "invalid-json"
@@ -120,14 +156,17 @@ function settingsFromConfig(config, pluginId) {
 }
 
 function parseProfiles(raw) {
-  var lines = String(raw || "").split("\n")
+  var text = String(raw || "")
+  if (text.length > MAX_HELPER_CHARS) return { profiles: [], active: "" }
+  var lines = text.split("\n")
   var list = []
   var active = ""
   for (var i = 0; i < lines.length; i++) {
+    if (list.length >= MAX_PROFILES) break
     var line = String(lines[i] || "").trim()
     if (!line) continue
     var parts = line.split("\t")
-    var name = String(parts[0] || "").trim()
+    var name = sanitizeProfileName(parts[0])
     if (!name) continue
     list.push(name)
     if (String(parts[1] || "").trim() === "1") active = name
@@ -139,7 +178,7 @@ function profileTitle(name) {
   if (name === "power-saver") return "Power saver"
   if (name === "balanced") return "Balanced"
   if (name === "performance") return "Performance"
-  return String(name || "")
+  return plain(name, MAX_NAME_CHARS)
 }
 
 function profileIcon(name) {
@@ -164,8 +203,13 @@ function profileAt(profiles, index) {
 
 if (typeof module !== "undefined") {
   module.exports = {
+    MAX_HELPER_CHARS: MAX_HELPER_CHARS,
     clampPercent: clampPercent,
     clampInt: clampInt,
+    plain: plain,
+    sanitizeName: sanitizeName,
+    sanitizeProfileName: sanitizeProfileName,
+    isProfileName: isProfileName,
     conserveEndFromSettings: conserveEndFromSettings,
     conserveStart: conserveStart,
     fullStart: fullStart,

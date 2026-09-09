@@ -96,10 +96,12 @@ State lives in `~/.local/state/omarchy/smart-charge/` and can be deleted.
 
 ## Security and data
 
-Plugins run unsandboxed inside `omarchy-shell`. Charge Limit does not use the network and does not ship binaries. It writes:
+Plugins run unsandboxed inside `omarchy-shell`. Charge Limit does not use the network and does not ship binaries. QML `Text` is pinned to `PlainText` so helper output cannot become a fetch. Helper stdout is capped at 4 KiB with an 8s deadline before it reaches the shell. State writes use an exclusive temporary and `rename(2)`, which replaces a planted symlink instead of writing through it.
+
+It writes:
 
 - `/sys/class/power_supply/*/charge_control_*_threshold` through the helper
-- `~/.local/state/omarchy/smart-charge/` — charge mode for this plug session
+- `~/.local/state/omarchy/smart-charge/mode` — charge mode for this plug session
 - `~/.local/state/omarchy/powerprofiles/` — AC/battery profile, via `omarchy-powerprofiles-set`
 - `~/.config/omarchy/shell.json` — `promptOnConnect` when you skip or restore the card
 
@@ -122,6 +124,7 @@ Panel.qml                             Bar panel: ask-on-plug toggle
 BarWidget.qml                         Cap readout on the bar
 Model.js                              Prompt rules, status, profile parsing
 scripts/charge-ctl                    Read/write thresholds
+scripts/bounded-run                   Deadline + byte cap around helpers
 scripts/set-battery-charge-thresholds Root helper source
 scripts/install-helper                Optional one-time sudo install
 preview.png                           Marketplace still

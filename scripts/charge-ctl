@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/usr/bin/bash
 # Charge Limit backend. Reads and writes kernel charge thresholds.
 # Does not touch power-profiles-daemon.
 set -euo pipefail
@@ -20,36 +20,63 @@ if ((CONSERVE_START < 0)); then CONSERVE_START=0; fi
 FULL_START=$CONSERVE_START
 FULL_END=100
 
-mkdir -p "$STATE_DIR"
+ensure_state_dir() {
+  local dir=$1 owner
+  /usr/bin/mkdir -p -m 700 -- "$dir"
+  if [[ -L $dir || ! -d $dir ]]; then
+    echo "Refusing state directory $dir" >&2
+    return 1
+  fi
+  owner=$(/usr/bin/stat -c '%u' -- "$dir")
+  if [[ $owner != "$(/usr/bin/id -u)" ]]; then
+    echo "Refusing state directory $dir" >&2
+    return 1
+  fi
+  /usr/bin/chmod 700 -- "$dir"
+  /usr/bin/find "$dir" -mindepth 1 -maxdepth 1 ! -type f -exec /usr/bin/rm -rf -- {} + 2>/dev/null || true
+  /usr/bin/find "$dir" -mindepth 1 -maxdepth 1 -type f -exec /usr/bin/chmod 600 -- {} + 2>/dev/null || true
+}
 
 read_file() {
-  local path=$1
-  [[ -r $path ]] || { echo ""; return 0; }
-  tr -d '\n' <"$path"
+  local path=$1 out
+  [[ -n ${path:-} ]] || { printf ''; return 0; }
+  out=$(/usr/bin/dd if="$path" iflag=nofollow,nonblock,count_bytes,fullblock bs=1 count=65 status=none 2>/dev/null || true)
+  printf '%s' "$out" | /usr/bin/tr -d '\n'
+}
+
+write_state() {
+  local dest=$1 payload=$2 dir t
+  dir=$(/usr/bin/dirname -- "$dest")
+  ensure_state_dir "$dir" || return 1
+  umask 077
+  t=$(/usr/bin/mktemp -p "$dir" .state.XXXXXXXXXX) || return 1
+  if ! printf '%s\n' "$payload" >"$t"; then
+    /usr/bin/rm -f -- "$t"
+    return 1
+  fi
+  if ! /usr/bin/mv -f -T -- "$t" "$dest"; then
+    /usr/bin/rm -f -- "$t"
+    return 1
+  fi
 }
 
 find_battery() {
   local d
   for d in /sys/class/power_supply/*; do
     [[ -e $d/charge_control_end_threshold ]] || continue
-    echo "$d"
+    printf '%s\n' "$d"
     return 0
   done
-  echo ""
+  printf ''
 }
 
 is_ac() {
   local d
   for d in /sys/class/power_supply/*; do
-    [[ -r $d/type ]] || continue
     [[ $(read_file "$d/type") == Mains ]] || continue
     [[ $(read_file "$d/online") == 1 ]] && return 0
   done
   return 1
-}
-
-battery_path() {
-  read_file "$STATE_DIR/battery_path"
 }
 
 current_mode() {
@@ -57,7 +84,11 @@ current_mode() {
 }
 
 set_mode() {
-  printf '%s\n' "$1" >"$STATE_DIR/mode"
+  case "$1" in
+    full | conserve) ;;
+    *) return 1 ;;
+  esac
+  write_state "$STATE_DIR/mode" "$1"
 }
 
 json_escape() {
@@ -67,10 +98,18 @@ json_escape() {
   printf '%s' "$s"
 }
 
+battery_name() {
+  local name
+  name=$(/usr/bin/basename -- "$1")
+  if [[ $name =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,31}$ ]]; then
+    printf '%s' "$name"
+  fi
+}
+
 write_thresholds() {
   local start=$1 end=$2 bat=$3
   if [[ -x $HELPER ]]; then
-    if sudo -n "$HELPER" "$start" "$end" 2>/dev/null; then
+    if /usr/bin/sudo -n "$HELPER" "$start" "$end" 2>/dev/null; then
       return 0
     fi
   fi
@@ -89,7 +128,7 @@ write_thresholds() {
 }
 
 cmd_status() {
-  local bat start end cap mode supported writable ac json=0
+  local bat start end cap mode supported writable ac json=0 name
   [[ ${1:-} == --json ]] && json=1
   bat=$(find_battery)
   if [[ -z $bat ]]; then
@@ -100,10 +139,12 @@ cmd_status() {
     fi
     return 0
   fi
-  printf '%s\n' "$bat" >"$STATE_DIR/battery_path"
   start=$(read_file "$bat/charge_control_start_threshold")
   end=$(read_file "$bat/charge_control_end_threshold")
   cap=$(read_file "$bat/capacity")
+  is_pct "$start" || start=0
+  is_pct "$end" || end=0
+  is_pct "$cap" || cap=0
   mode=$(current_mode)
   if [[ $mode != full && $mode != conserve ]]; then
     if [[ $end == 100 || $end == 99 ]]; then
@@ -121,9 +162,10 @@ cmd_status() {
   ac=false
   is_ac && ac=true
   supported=true
+  name=$(battery_name "$bat")
   if ((json)); then
     printf '{"supported":true,"writable":%s,"ac":%s,"capacity":%s,"start":%s,"end":%s,"mode":"%s","battery":"%s","error":""}\n' \
-      "$writable" "$ac" "${cap:-0}" "${start:-0}" "${end:-0}" "$(json_escape "$mode")" "$(json_escape "$(basename "$bat")")"
+      "$writable" "$ac" "$cap" "$start" "$end" "$(json_escape "$mode")" "$(json_escape "$name")"
   else
     echo "Supported:     yes"
     echo "Writable:      $writable"
@@ -131,7 +173,7 @@ cmd_status() {
     echo "Capacity:      ${cap}%"
     echo "Thresholds:    ${start}–${end}%"
     echo "Mode:          $mode"
-    echo "Battery:       $(basename "$bat")"
+    echo "Battery:       $name"
   fi
 }
 

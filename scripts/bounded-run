@@ -1,0 +1,13 @@
+#!/usr/bin/bash
+# Cap helper stdout/stderr and enforce a deadline before bytes reach omarchy-shell.
+set -uo pipefail
+MAX=4096
+ERR_MAX=1024
+LC_ALL=C
+export LC_ALL
+# Own session, absolute deadline with KILL escalation, producer-side cap of MAX + 1.
+out=$(/usr/bin/setsid -w /usr/bin/timeout -k 2 -- 8 "$@" 2> >(/usr/bin/head -c $((ERR_MAX + 1)) >&2) | /usr/bin/head -c $((MAX + 1)))
+rc=$?
+if [ ${#out} -gt "$MAX" ]; then echo "output exceeded ${MAX} bytes" >&2; exit 1; fi
+[ "$rc" -eq 0 ] || exit "$rc"
+printf '%s' "$out"

@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/usr/bin/bash
 # Root helper: write charge start/stop thresholds on any sysfs battery
 # that exposes charge_control_*_threshold.
 # Usage: set-battery-charge-thresholds <start 0-100> <end 0-100>
@@ -8,6 +8,12 @@ start=${1:-}
 end=${2:-}
 
 is_pct() { [[ $1 =~ ^[0-9]+$ ]] && ((10#$1 >= 0 && 10#$1 <= 100)); }
+
+read_sysfs() {
+  local out
+  out=$(/usr/bin/dd if="$1" iflag=nofollow,nonblock,count_bytes,fullblock bs=1 count=8 status=none 2>/dev/null || true)
+  printf '%s' "$out" | /usr/bin/tr -d '\n'
+}
 
 if ! is_pct "$start" || ! is_pct "$end"; then
   echo "Usage: $0 <start 0-100> <end 0-100>" >&2
@@ -35,11 +41,11 @@ if [[ ! -w $bat/charge_control_start_threshold || ! -w $bat/charge_control_end_t
   exit 1
 fi
 
-cur_start=$(tr -d '\n' <"$bat/charge_control_start_threshold")
-cur_end=$(tr -d '\n' <"$bat/charge_control_end_threshold")
+cur_end=$(read_sysfs "$bat/charge_control_end_threshold")
+is_pct "$cur_end" || cur_end=0
 
 # Widen the allowed window first so the firmware does not reject the write.
-if ((10#$end >= 10#${cur_end:-0})); then
+if ((10#$end >= 10#$cur_end)); then
   printf '%s\n' "$end" >"$bat/charge_control_end_threshold"
   printf '%s\n' "$start" >"$bat/charge_control_start_threshold"
 else

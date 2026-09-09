@@ -20,6 +20,8 @@ Panel {
   readonly property string modeText: hostWidget && hostWidget.mode === "full"
     ? "Charging to 100%"
     : ("Holding at " + conserveEnd + "%")
+  readonly property string omarchyShell: (Quickshell.env("OMARCHY_PATH") || "/usr/share/omarchy") + "/bin/omarchy-shell"
+
 
   function open() {
     root.controller.show()
@@ -56,7 +58,7 @@ Panel {
 
   function runWizard() {
     root.close()
-    Quickshell.execDetached(["omarchy-shell", "k7cfo.charge", "prompt"])
+    Quickshell.execDetached([root.omarchyShell, "k7cfo.charge", "prompt"])
   }
 
   KeyboardPanel {
@@ -88,6 +90,7 @@ Panel {
 
         Text {
           width: parent.width
+          textFormat: Text.PlainText
           text: "Charge limit"
           color: root.contentForeground
           font.family: root.contentFontFamily
@@ -97,6 +100,7 @@ Panel {
 
         Text {
           width: parent.width
+          textFormat: Text.PlainText
           text: root.modeText + " · cap " + root.capText
           color: root.contentForeground
           opacity: 0.78
@@ -127,6 +131,7 @@ Panel {
 
         Text {
           width: parent.width
+          textFormat: Text.PlainText
           text: "A asks on plug · Enter runs the wizard · Esc closes"
           color: root.contentForeground
           opacity: 0.5

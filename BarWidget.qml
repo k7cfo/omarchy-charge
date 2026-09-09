@@ -11,27 +11,40 @@ BarWidget {
   moduleName: "k7cfo.charge"
 
   property var status: Model.parseStatus("")
+  property string statusBuf: ""
   readonly property int conserveEnd: Model.conserveEndFromSettings(root.settings)
   readonly property string ctl: Model.pluginFilePath(Qt.resolvedUrl("scripts/charge-ctl"))
+  readonly property string boundedRun: Model.pluginFilePath(Qt.resolvedUrl("scripts/bounded-run"))
+  readonly property string omarchyBin: (Quickshell.env("OMARCHY_PATH") || "/usr/share/omarchy") + "/bin"
+  readonly property string omarchyShell: omarchyBin + "/omarchy-shell"
+  readonly property int helperCap: Model.MAX_HELPER_CHARS
   readonly property bool supported: status.supported
   readonly property string mode: status.mode === "full" ? "full" : "conserve"
   readonly property string label: Model.capLabel(mode, conserveEnd) + "%"
   readonly property bool opened: panelLoader.item ? panelLoader.item.opened === true : false
   readonly property bool popoutSwitchClosing: panelLoader.item ? panelLoader.item.popoutSwitchClosing === true : false
-
-
-  function ctlCommand(args) {
-    return ["env", "CHARGE_CONSERVE_END=" + String(root.conserveEnd)].concat(args)
+  readonly property var helperEnvironment: {
+    var env = {
+      "HOME": String(Quickshell.env("HOME") || ""),
+      "PATH": "/usr/bin:/usr/local/sbin",
+      "LC_ALL": "C",
+      "CHARGE_CONSERVE_END": String(root.conserveEnd)
+    }
+    var stateHome = String(Quickshell.env("XDG_STATE_HOME") || "")
+    if (stateHome !== "") env.XDG_STATE_HOME = stateHome
+    return env
   }
+
 
   function refresh() {
     if (statusProc.running) return
-    statusProc.command = root.ctlCommand([root.ctl, "status", "--json"])
+    root.statusBuf = ""
+    statusProc.command = [root.boundedRun, root.ctl, "status", "--json"]
     statusProc.running = true
   }
 
   function prompt() {
-    Quickshell.execDetached(["omarchy-shell", "k7cfo.charge", "prompt"])
+    Quickshell.execDetached([root.omarchyShell, "k7cfo.charge", "prompt"])
   }
 
   function open() {
@@ -68,11 +81,28 @@ BarWidget {
 
   Process {
     id: statusProc
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: root.status = Model.parseStatus(text)
+    clearEnvironment: true
+    environment: root.helperEnvironment
+    stdout: SplitParser {
+      splitMarker: ""
+      onRead: function(chunk) {
+        root.statusBuf += chunk
+        if (root.statusBuf.length > root.helperCap) {
+          statusProc.signal(15)
+          statusKill.start()
+          root.statusBuf = ""
+        }
+      }
     }
+    stderr: SplitParser { splitMarker: ""; onRead: function() {} }
+    onExited: {
+      root.status = Model.parseStatus(root.statusBuf)
+      root.statusBuf = ""
+    }
+    Component.onDestruction: { if (statusProc.running) statusProc.signal(15) }
   }
+
+  Timer { id: statusKill; interval: 2000; repeat: false; onTriggered: { if (statusProc.running) statusProc.signal(9) } }
 
   Timer {
     interval: 15000
@@ -103,11 +133,11 @@ BarWidget {
     anchors.fill: parent
     bar: root.bar
     text: root.label
-    tooltipText: root.supported
+    tooltipText: Model.plain(root.supported
       ? (root.mode === "full"
         ? "Charging to 100%. Click for ask-on-plug. Right-click for the wizard."
         : "Holding at " + root.conserveEnd + "%. Click for ask-on-plug. Right-click for the wizard.")
-      : "No charge-threshold battery"
+      : "No charge-threshold battery")
     onPressed: function(b) {
       if (!root.supported) return
       if (b === Qt.RightButton) root.prompt()

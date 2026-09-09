@@ -17,8 +17,29 @@ Item {
   property bool promptOnConnect: true
   property var profiles: []
   property string activeProfile: ""
+  property string statusBuf: ""
+  property string applyBuf: ""
+  property string profileBuf: ""
+  property string profilesBuf: ""
 
   readonly property string ctl: Model.pluginFilePath(Qt.resolvedUrl("scripts/charge-ctl"))
+  readonly property string boundedRun: Model.pluginFilePath(Qt.resolvedUrl("scripts/bounded-run"))
+  readonly property string omarchyBin: (Quickshell.env("OMARCHY_PATH") || "/usr/share/omarchy") + "/bin"
+  readonly property string omarchyShell: omarchyBin + "/omarchy-shell"
+  readonly property string powerprofilesList: omarchyBin + "/omarchy-powerprofiles-list"
+  readonly property string powerprofilesSet: omarchyBin + "/omarchy-powerprofiles-set"
+  readonly property int helperCap: Model.MAX_HELPER_CHARS
+  readonly property var helperEnvironment: {
+    var env = {
+      "HOME": String(Quickshell.env("HOME") || ""),
+      "PATH": "/usr/bin:/usr/local/sbin",
+      "LC_ALL": "C",
+      "CHARGE_CONSERVE_END": String(root.conserveEnd)
+    }
+    var stateHome = String(Quickshell.env("XDG_STATE_HOME") || "")
+    if (stateHome !== "") env.XDG_STATE_HOME = stateHome
+    return env
+  }
 
   function loadSettings() {
     var settings = {}
@@ -46,29 +67,41 @@ Item {
     persistPromptOnConnect(!prompt.skipAsk)
   }
 
-  function ctlCommand(args) {
-    return ["env", "CHARGE_CONSERVE_END=" + String(root.conserveEnd)].concat(args)
+  function takeChunk(proc, field, chunk, killer) {
+    root[field] += chunk
+    if (root[field].length > root.helperCap) {
+      proc.signal(15)
+      killer.start()
+      root[field] = ""
+    }
   }
 
   function refreshStatus() {
     if (statusProc.running) return
-    statusProc.command = root.ctlCommand([root.ctl, "status", "--json"])
+    root.statusBuf = ""
+    statusProc.command = [root.boundedRun, root.ctl, "status", "--json"]
     statusProc.running = true
   }
 
   function refreshProfiles() {
-    if (!profilesProc.running) profilesProc.running = true
+    if (!profilesProc.running) {
+      root.profilesBuf = ""
+      profilesProc.running = true
+    }
   }
 
   function apply(mode) {
     if (applyProc.running) return
-    applyProc.command = root.ctlCommand([root.ctl, mode === "full" ? "full" : "conserve"])
+    root.applyBuf = ""
+    applyProc.command = [root.boundedRun, root.ctl, mode === "full" ? "full" : "conserve"]
     applyProc.running = true
   }
 
   function applyProfile(name) {
     if (!name || profileProc.running) return
-    profileProc.command = ["omarchy-powerprofiles-set", "autodetect", name]
+    if (!Model.isProfileName(name)) return
+    root.profileBuf = ""
+    profileProc.command = [root.boundedRun, root.powerprofilesSet, "autodetect", name]
     profileProc.running = true
   }
 
@@ -115,42 +148,78 @@ Item {
 
   Process {
     id: statusProc
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: {
-        root.status = Model.parseStatus(text)
-        root.maybeFinishFull()
-      }
+    clearEnvironment: true
+    environment: root.helperEnvironment
+    stdout: SplitParser {
+      splitMarker: ""
+      onRead: function(chunk) { root.takeChunk(statusProc, "statusBuf", chunk, statusKill) }
     }
+    stderr: SplitParser { splitMarker: ""; onRead: function() {} }
+    onExited: {
+      root.status = Model.parseStatus(root.statusBuf)
+      root.statusBuf = ""
+      root.maybeFinishFull()
+    }
+    Component.onDestruction: { if (statusProc.running) statusProc.signal(15) }
   }
+
+  Timer { id: statusKill; interval: 2000; repeat: false; onTriggered: { if (statusProc.running) statusProc.signal(9) } }
 
   Process {
     id: applyProc
-    stdout: StdioCollector { waitForEnd: true }
-    onExited: root.refreshStatus()
+    clearEnvironment: true
+    environment: root.helperEnvironment
+    stdout: SplitParser {
+      splitMarker: ""
+      onRead: function(chunk) { root.takeChunk(applyProc, "applyBuf", chunk, applyKill) }
+    }
+    stderr: SplitParser { splitMarker: ""; onRead: function() {} }
+    onExited: {
+      root.applyBuf = ""
+      root.refreshStatus()
+    }
+    Component.onDestruction: { if (applyProc.running) applyProc.signal(15) }
   }
+
+  Timer { id: applyKill; interval: 2000; repeat: false; onTriggered: { if (applyProc.running) applyProc.signal(9) } }
 
   Process {
     id: profileProc
-    stdout: StdioCollector { waitForEnd: true }
-    onExited: root.refreshProfiles()
+    stdout: SplitParser {
+      splitMarker: ""
+      onRead: function(chunk) { root.takeChunk(profileProc, "profileBuf", chunk, profileKill) }
+    }
+    stderr: SplitParser { splitMarker: ""; onRead: function() {} }
+    onExited: {
+      root.profileBuf = ""
+      root.refreshProfiles()
+    }
+    Component.onDestruction: { if (profileProc.running) profileProc.signal(15) }
   }
+
+  Timer { id: profileKill; interval: 2000; repeat: false; onTriggered: { if (profileProc.running) profileProc.signal(9) } }
 
   Process {
     id: profilesProc
-    command: ["omarchy-powerprofiles-list", "--active-state"]
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: {
-        var parsed = Model.parseProfiles(text)
-        if (parsed.profiles.length === 0) return
-        root.profiles = parsed.profiles
-        root.activeProfile = parsed.active
-        prompt.profiles = parsed.profiles
-        prompt.activeProfile = parsed.active
-      }
+    command: [root.boundedRun, root.powerprofilesList, "--active-state"]
+    stdout: SplitParser {
+      splitMarker: ""
+      onRead: function(chunk) { root.takeChunk(profilesProc, "profilesBuf", chunk, profilesKill) }
     }
+    stderr: SplitParser { splitMarker: ""; onRead: function() {} }
+    onExited: {
+      var parsed = Model.parseProfiles(root.profilesBuf)
+      root.profilesBuf = ""
+      if (parsed.profiles.length === 0) return
+      root.profiles = parsed.profiles
+      root.activeProfile = parsed.active
+      prompt.profiles = parsed.profiles
+      prompt.activeProfile = parsed.active
+    }
+    Component.onDestruction: { if (profilesProc.running) profilesProc.signal(15) }
   }
+
+  Timer { id: profilesKill; interval: 2000; repeat: false; onTriggered: { if (profilesProc.running) profilesProc.signal(9) } }
 
   IpcHandler {
     target: "k7cfo.charge"
