@@ -20,9 +20,13 @@ BarWidget {
   readonly property int helperCap: Model.MAX_HELPER_CHARS
   readonly property bool supported: status.supported
   readonly property string mode: status.mode === "full" ? "full" : "conserve"
-  readonly property int packPercent: Model.packPercent(UPower.displayDevice ? UPower.displayDevice.percentage : undefined, status.capacity)
+  readonly property int packPercent: {
+    var device = UPower.displayDevice
+    var live = device && device.isPresent ? device.percentage : undefined
+    return Model.packPercent(live, status.capacity)
+  }
   readonly property string label: Model.capLabel(mode, conserveEnd) + "%"
-  readonly property string barText: Model.barLabel(root.packPercent, mode, conserveEnd)
+  readonly property string barText: Model.barLabel(root.packPercent)
   readonly property bool opened: panelLoader.item ? panelLoader.item.opened === true : false
   readonly property bool popoutSwitchClosing: panelLoader.item ? panelLoader.item.popoutSwitchClosing === true : false
   readonly property var helperEnvironment: {
@@ -134,12 +138,12 @@ BarWidget {
     id: button
     anchors.fill: parent
     bar: root.bar
-    text: root.vertical ? "" : root.barText
-    labelVisible: !root.vertical
+    text: root.barText
+    labelVisible: true
     hasVisualContent: true
     fontSize: Style.bar.iconFont
     horizontalMargin: 8.75
-    fixedHeight: root.vertical ? Style.bar.iconSlot * 2 : -1
+    fixedHeight: -1
     tooltipText: Model.plain(root.supported
       ? (root.mode === "full"
         ? (root.packPercent + "%, charging to 100%. Click for ask-on-plug. Right-click for the wizard.")
@@ -149,36 +153,6 @@ BarWidget {
       if (!root.supported) return
       if (b === Qt.RightButton) root.prompt()
       else root.togglePanel()
-    }
-
-    Column {
-      visible: root.vertical
-      anchors.fill: parent
-
-      Text {
-        width: parent.width
-        height: Style.bar.iconSlot
-        textFormat: Text.PlainText
-        text: String(root.packPercent)
-        color: button.foreground
-        font.family: button.fontFamily
-        font.pixelSize: button.fontSize
-        horizontalAlignment: Text.AlignHCenter
-        verticalAlignment: Text.AlignVCenter
-      }
-
-      Text {
-        width: parent.width
-        height: Style.bar.iconSlot
-        textFormat: Text.PlainText
-        text: Model.capLabel(root.mode, root.conserveEnd)
-        color: button.foreground
-        opacity: 0.7
-        font.family: button.fontFamily
-        font.pixelSize: button.fontSize
-        horizontalAlignment: Text.AlignHCenter
-        verticalAlignment: Text.AlignVCenter
-      }
     }
   }
 }

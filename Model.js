@@ -74,8 +74,8 @@ function packPercent(upowerPercent, capacity) {
   return clampPercent(capacity)
 }
 
-function barLabel(capacity, mode, conserveEnd) {
-  return String(clampPercent(capacity)) + "·" + capLabel(mode, conserveEnd)
+function barLabel(capacity) {
+  return String(clampPercent(capacity)) + "%"
 }
 
 

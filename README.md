@@ -50,9 +50,9 @@ The laptop also needs a battery that exposes `charge_control_end_threshold` in s
 
 ## Use
 
-- **Plug in** — **1** hold 80%, **2** fill to 100%, then **1 / 2 / 3** for power saver, balanced, or performance. Timeout and Esc on the first step are 80%. Esc on the second step keeps the current profile.
+- **Plug in** — the card waits until the display layout settles (USB-C DP often comes up with AC). Then **1** hold 80%, **2** fill to 100%, then **1 / 2 / 3** for power saver, balanced, or performance. Timeout and Esc on the first step are 80%. Esc on the second step keeps the current profile.
 - **Don't ask when plugging in** — checkbox on the card, or press **D**. The next plug stays quiet.
-- **Bar widget** — `41·80` is pack percent, then the cap. Left click opens the panel with **Ask when plugging in**. Right click runs the wizard now.
+- **Bar widget** — live pack percent, for example `41%`. The charge cap stays in the tooltip and the panel, not on the bar. Left click opens the panel with **Ask when plugging in**. Right click runs the wizard now.
 - **IPC**
 
 ```bash
@@ -118,8 +118,8 @@ It writes:
 
 ```text
 manifest.json                         Omarchy plugin manifest (repo root)
-Service.qml                           Watches AC, shows the prompt, sets profiles
-Prompt.qml                            Cap, then profile, then skip-next-time
+Service.qml                           Watches AC, delays the prompt until outputs settle, sets profiles
+Prompt.qml                            Cap, then profile, then skip-next-time; laptop screen only
 Panel.qml                             Bar panel: ask-on-plug toggle
 BarWidget.qml                         Cap readout on the bar
 Model.js                              Prompt rules, status, profile parsing

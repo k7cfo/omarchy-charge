@@ -11,6 +11,9 @@ Item {
   property var manifest: null
   property bool wasOnBattery: true
   property bool sessionPrompted: false
+  property bool pendingAcPrompt: false
+  property int acWatchStartScreens: 1
+
   property bool ready: false
   property var status: Model.parseStatus("")
   property int conserveEnd: 80
@@ -116,12 +119,32 @@ Item {
     prompt.openPrompt()
   }
 
+  function cancelAcPrompt() {
+    root.pendingAcPrompt = false
+    acSettle.stop()
+    acPost.stop()
+  }
+
+  function queueAcPrompt() {
+    root.pendingAcPrompt = true
+    root.acWatchStartScreens = (Quickshell.screens || []).length
+    acPost.stop()
+    acSettle.restart()
+  }
+
+  function flushAcPrompt() {
+    if (!root.pendingAcPrompt) return
+    root.cancelAcPrompt()
+    root.showPrompt()
+  }
+
   function onPowerChanged() {
     var onBattery = !!UPower.onBattery
     var settings = loadSettings()
     var ask = Model.promptOnConnectFromSettings(settings)
     if (onBattery) {
       root.sessionPrompted = false
+      root.cancelAcPrompt()
       if (prompt.opened) prompt.finishWithoutProfile()
       if (root.status.mode === "full") root.apply("conserve")
     } else if (Model.shouldPrompt({
@@ -133,7 +156,7 @@ Item {
       mode: root.status.mode
     })) {
       root.sessionPrompted = true
-      root.showPrompt()
+      root.queueAcPrompt()
     }
     root.wasOnBattery = onBattery
     root.refreshStatus()
@@ -226,6 +249,7 @@ Item {
 
     function prompt(): string {
       root.sessionPrompted = true
+      root.cancelAcPrompt()
       root.showPrompt()
       return "ok"
     }
@@ -263,6 +287,36 @@ Item {
     interval: 600
     repeat: false
     onTriggered: root.onPowerChanged()
+  }
+
+  // USB-C docks bring AC and DisplayPort up together. Mapping an exclusive
+  // overlay in that window fights Hyprland's output layout and can leave DP
+  // enabled-but-disconnected. Wait for an extra screen, or 4s, then ask.
+  Timer {
+    id: acSettle
+    interval: 4000
+    repeat: false
+    onTriggered: root.flushAcPrompt()
+  }
+
+  Timer {
+    id: acPost
+    interval: 400
+    repeat: false
+    onTriggered: root.flushAcPrompt()
+  }
+
+  Timer {
+    interval: 250
+    repeat: true
+    running: root.pendingAcPrompt
+    onTriggered: {
+      var n = (Quickshell.screens || []).length
+      if (n > root.acWatchStartScreens) {
+        acSettle.stop()
+        acPost.restart()
+      }
+    }
   }
 
   Timer {

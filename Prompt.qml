@@ -1,5 +1,6 @@
 import QtQuick
 import Quickshell
+import Quickshell.Hyprland
 import Quickshell.Wayland
 import qs.Commons
 import qs.Ui
@@ -21,6 +22,23 @@ Item {
   property string errorText: ""
   property var profiles: []
   property string activeProfile: ""
+  property bool focusPrimed: false
+
+  readonly property var laptopScreen: {
+    var screens = Quickshell.screens
+    var n = screens ? screens.length : 0
+    var i, s, mon, fallback = null
+    for (i = 0; i < n; i++) {
+      s = screens[i]
+      if (!s) continue
+      if (!fallback) fallback = s
+      mon = Hyprland.monitorFor(s)
+      if (mon && String(mon.name).indexOf("eDP") === 0) return s
+      if (s.name && String(s.name).indexOf("eDP") === 0) return s
+    }
+    return fallback
+  }
+
 
   readonly property string fontFamily: Style.font.menuFamily
   property color background: Color.menu.background
@@ -43,16 +61,21 @@ Item {
     selectedIndex = 0
     skipAsk = !promptOnConnect
     remainingMs = timeoutMs
+    focusPrimed = false
     opened = true
     tick.restart()
+    focusPrime.restart()
     Qt.callLater(function() { keyCatcher.forceActiveFocus() })
   }
 
+
   function closePrompt() {
     tick.stop()
+    focusPrime.stop()
     opened = false
     root.closed()
   }
+
 
   function restartTimer() {
     remainingMs = timeoutMs
@@ -61,9 +84,11 @@ Item {
 
   function finishWithoutProfile() {
     tick.stop()
+    focusPrime.stop()
     opened = false
     root.closed()
   }
+
 
   function chooseCharge(mode) {
     root.chargeChosen(mode === "full" ? "full" : "conserve")
@@ -80,10 +105,12 @@ Item {
   function chooseProfileAt(index) {
     var name = Model.profileAt(profiles, index)
     tick.stop()
+    focusPrime.stop()
     opened = false
     if (name) root.profileChosen(name)
     root.closed()
   }
+
 
   function onEscape() {
     if (onCharge) chooseCharge("conserve")
@@ -110,15 +137,31 @@ Item {
     }
   }
 
+  Timer {
+    id: focusPrime
+    interval: 75
+    repeat: false
+    onTriggered: if (root.opened) root.focusPrimed = true
+  }
+
+
   PanelWindow {
     id: panel
-    visible: root.opened
+    screen: root.laptopScreen
+    visible: root.opened && !remapGuard.remapping
     anchors { top: true; bottom: true; left: true; right: true }
     color: "transparent"
     WlrLayershell.namespace: "k7cfo-charge"
     WlrLayershell.layer: WlrLayer.Overlay
-    WlrLayershell.keyboardFocus: WlrKeyboardFocus.Exclusive
+    WlrLayershell.keyboardFocus: root.opened ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
     exclusionMode: ExclusionMode.Ignore
+
+
+    ScreenMoveRemap {
+      id: remapGuard
+      window: panel
+    }
+
 
     Rectangle {
       anchors.fill: parent
